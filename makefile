@@ -23,4 +23,7 @@ ddown:
 	$(CMD_DOCKER_COMPOSE) down
 logs: dupd
 	$(CMD_DOCKER_COMPOSE) logs -t --follow > $(LOG_DOCKER_COMPOSE)
+image:
+	docker buildx build --no-cache -t marcosisocram/rinha-go-2024-q1:latest .
+
 

@@ -2,13 +2,8 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"rinha-de-bk-go/errors"
 	"strconv"
-
-	crdbpgx "github.com/cockroachdb/cockroach-go/v2/crdb/crdbpgxv5"
-	"github.com/jackc/pgx/v5"
-	pkgerrors "github.com/pkg/errors"
 )
 
 type Transacao struct {
@@ -22,7 +17,7 @@ type Cliente struct {
 	Limite int `json:"limite"`
 }
 
-func InsertTransacao(clienteId int, transacao *Transacao) (Cliente, error) {
+func GravarTransacao(clienteId int, transacao *Transacao) (Cliente, error) {
 	conn, err := GetConnection()
 	if err != nil {
 		return Cliente{}, err
@@ -34,101 +29,41 @@ func InsertTransacao(clienteId int, transacao *Transacao) (Cliente, error) {
 
 	defer tx.Rollback(context.Background())
 
-	// Connect to redis.
-	//	client := redis.NewClient(&redis.Options{
-	//		Network: "tcp",
-	//		Addr:    "127.0.0.1:6379",
-	//	})
-	//	defer client.Close()
+	if transacao.Tipo == "d" {
 
-	// Create a new lock client.
-	//	locker := redislock.New(client)
+		row := tx.QueryRow(context.Background(), "SELECT saldo_r, limite_r, status_r FROM debitar($1, $2, $3)", clienteId, transacao.Valor, transacao.Descricao)
 
-	//	ctx := context.Background()
+		var status int
+		var saldo int
+		var limite int
 
-	// Retry every 100ms, for up-to 3x
-	// backoff := redislock.LimitRetry(redislock.LinearBackoff(100*time.Millisecond), 6)
+		err = row.Scan(&saldo, &limite, &status)
+		if err != nil {
+			return Cliente{}, err
+		}
 
-	// Try to obtain lock.
-	//lock, err := locker.Obtain(ctx, strconv.Itoa(clienteId), 2000*time.Millisecond, &redislock.Options{
-	//	RetryStrategy: backoff,
-	//})
-	//if err == redislock.ErrNotObtained {
-	//	fmt.Println("Could not obtain lock!")
-	//} else if err != nil {
-	//	log.Fatalln(err)
-	//}
+		if status == 1 {
+			return Cliente{}, errors.ErrSql("Cliente " + strconv.Itoa(clienteId) + " sem limite")
+		}
 
-	// Don't forget to defer Release.
-	// defer lock.Release(ctx)
-	// fmt.Println("I have a lock!")
+		tx.Commit(context.Background())
 
-	row := tx.QueryRow(context.Background(), "SELECT saldo, limite FROM clientes WHERE id = $1", clienteId)
+		return Cliente{Saldo: saldo, Limite: limite}, nil
 
-	var saldo int32
-	var limite int32
+	}
+
+	// Não sendo D então
+	row := tx.QueryRow(context.Background(), "SELECT saldo_r, limite_r FROM creditar($1, $2, $3)", clienteId, transacao.Valor, transacao.Descricao)
+
+	var saldo int
+	var limite int
 
 	err = row.Scan(&saldo, &limite)
 	if err != nil {
-		fmt.Println("Erro no select: ")
-		fmt.Println(err)
-		return Cliente{}, errors.ErrSql("Select")
-	}
-
-	novoSaldo := saldo + transacao.Valor
-
-	// Validar tipo e saldo
-	if transacao.Tipo == "d" {
-		novoSaldo = saldo - transacao.Valor
-		if novoSaldo < (limite * -1) {
-			return Cliente{}, errors.ErrLimite(strconv.Itoa(clienteId))
-		}
-	}
-
-	_, err = tx.Exec(context.Background(), "INSERT INTO transacoes (cliente_id, tipo, valor, descricao) values ($1, $2, $3, $4)", clienteId, transacao.Tipo, transacao.Valor, transacao.Descricao)
-	if err != nil {
-		fmt.Println(err)
-		return Cliente{}, errors.ErrSql("Insert")
+		return Cliente{}, err
 	}
 
 	tx.Commit(context.Background())
 
-	err = crdbpgx.ExecuteTx(context.Background(), conn, pgx.TxOptions{}, func(txx pgx.Tx) error {
-		// TODO: continuar colocando o update aqui
-
-		_, err = txx.Exec(context.Background(), "UPDATE clientes SET saldo = $1 WHERE id = $2", novoSaldo, clienteId)
-		if err != nil {
-			return pkgerrors.Wrap(err, "Update")
-		}
-
-		//_, err = txx.Exec(context.Background(), "DELETE FROM transacoes WHERE id NOT IN ( SELECT id FROM transacoes WHERE cliente_id = $1 ORDER BY realizada_em DESC LIMIT 10 )", clienteId)
-		//if err != nil {
-		//	return pkgerrors.Wrap(err, "Delete")
-		//}
-		//_, err = tx.Exec(ctx, "INSERT INTO transacoes (cliente_id, tipo, valor, descricao) values ($1, $2, $3, $4)", clienteId, transacao.Tipo, transacao.Valor, transacao.Descricao)
-		//if err != nil {
-		//	return pkgerrors.Wrap(err, "Insert")
-		//}
-		return nil
-	})
-	if err != nil {
-		fmt.Println(err)
-		return Cliente{}, errors.ErrSql("Ferrou!")
-	}
-
-	//	_, err = tx.Exec(context.Background(), "UPDATE clientes SET saldo = $1 WHERE id = $2", novoSaldo, clienteId)
-	//	if err != nil {
-	//		fmt.Println(err)
-	//		return Cliente{}, errors.ErrSql("Update")
-	//	}
-
-	//_, err = tx.Exec(context.Background(), "INSERT INTO transacoes (cliente_id, tipo, valor, descricao) values ($1, $2, $3, $4)", clienteId, transacao.Tipo, transacao.Valor, transacao.Descricao)
-	//if err != nil {
-	//	fmt.Println(err)
-	//	return Cliente{}, errors.ErrSql("Insert")
-	//}
-
-	//	tx.Commit(context.Background())
-
-	return Cliente{Saldo: int(novoSaldo), Limite: int(limite)}, nil
+	return Cliente{Saldo: saldo, Limite: limite}, nil
 }

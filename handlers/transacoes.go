@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"rinha-de-bk-go/db"
@@ -33,7 +33,7 @@ func PostTransacoes(ctx *gin.Context) {
 
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		ctx.JSON(http.StatusUnprocessableEntity, gin.H{})
+		ctx.JSON(http.StatusNotFound, gin.H{})
 		return
 	}
 
@@ -45,22 +45,20 @@ func PostTransacoes(ctx *gin.Context) {
 	var transacao db.Transacao
 
 	if err = ctx.ShouldBindJSON(&transacao); err != nil {
-		fmt.Println("Não foi possivel receber body")
-		fmt.Println(err)
+		log.Println("Não foi possivel receber body", err)
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{})
 		return
 	}
 
 	if err = validar(&transacao); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{})
 		return
 	}
 
-	cliente, err := db.InsertTransacao(id, &transacao)
+	cliente, err := db.GravarTransacao(id, &transacao)
 	if err != nil {
-		fmt.Println("Erro ao inserir...")
-		fmt.Println(err)
+		log.Println(err)
 
 		ctx.JSON(http.StatusUnprocessableEntity, gin.H{})
 		return

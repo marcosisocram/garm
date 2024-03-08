@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"fmt"
 	"time"
 )
 
@@ -24,7 +23,7 @@ type Extrato struct {
 	UltimasTransacoes []UltimaTransacao `json:"ultimas_transacoes"`
 }
 
-func RecuperaExtratos(clientId int) (Extrato, error) {
+func RecuperarExtratos(clientId int) (Extrato, error) {
 	conn, err := GetConnection()
 	if err != nil {
 		return Extrato{}, err
@@ -75,7 +74,7 @@ func RecuperaExtratos(clientId int) (Extrato, error) {
 	}
 
 	if err = rows.Err(); err != nil {
-		fmt.Println("Finalizou devido a erros no rows.Next")
+		return Extrato{}, err
 	}
 
 	return extrato, nil
