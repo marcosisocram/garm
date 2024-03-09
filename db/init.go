@@ -16,8 +16,17 @@ func InitPool() error {
 		return err
 	}
 
-	config.MaxConns = strconv.Atoi(os.Getenv("DB_MAX_CONN"))
-	config.MinConns = strconv.Atoi(os.Getenv("DB_MIN_CONN"))
+	maxc, err := strconv.Atoi(os.Getenv("DB_MAX_CONN"))
+	if err != nil {
+		return err
+	}
+	minc, err := strconv.Atoi(os.Getenv("DB_MIN_CONN"))
+	if err != nil {
+		return err
+	}
+
+	config.MaxConns = int32(maxc)
+	config.MinConns = int32(minc)
 
 	pool, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
